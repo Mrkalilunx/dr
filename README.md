@@ -26,6 +26,12 @@ Actions artifact 名称 dr，需登录 GitHub 后在 Actions 页面下载
 
 从旧的 debug 自动签名 APK 首次升级需先卸载一次
 
+## 可复现性
+
+同一提交的多次构建产物 md5 恒定
+
+签名与依赖信息块均已固定
+
 ## 构建
 
 推送 master 分支即触发
