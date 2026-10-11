@@ -15,8 +15,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.abs
@@ -26,8 +24,8 @@ class floatservice : Service() {
     private lateinit var wm: WindowManager
 
     private var floatView: TextView? = null
-    private var panelView: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
+    private var hudView: drawcanvas? = null
 
     private var buttonSize = 0
     private var margin = 0
@@ -35,7 +33,6 @@ class floatservice : Service() {
     private var statusBarHeight = 0
     private var touchSlop = 0
 
-    private var isPanelShowing = false
     private var downX = 0f
     private var downY = 0f
     private var startX = 0
@@ -66,10 +63,10 @@ class floatservice : Service() {
     }
 
     override fun onDestroy() {
-        removePanel()
+        removeHudCanvas()
 
         floatView?.let {
-            wm.removeView(it)
+            runCatching { wm.removeView(it) }
         }
         floatView = null
 
@@ -103,6 +100,7 @@ class floatservice : Service() {
         val builder = if (Build.VERSION.SDK_INT >= 26) {
             Notification.Builder(this, channelId)
         } else {
+            @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
 
@@ -137,8 +135,7 @@ class floatservice : Service() {
             buttonSize,
             buttonSize,
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
 
@@ -167,13 +164,13 @@ class floatservice : Service() {
 
                     p.x = startX + dx
                     p.y = startY + dy
-                    wm.updateViewLayout(v, p)
+                    runCatching { wm.updateViewLayout(v, p) }
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
                     if (!moved) {
-                        togglePanel()
+                        toggleHud()
                     }
                     true
                 }
@@ -182,7 +179,7 @@ class floatservice : Service() {
             }
         }
 
-        wm.addView(tv, p)
+        runCatching { wm.addView(tv, p) }
         floatView = tv
         params = p
     }
@@ -196,63 +193,42 @@ class floatservice : Service() {
         }
     }
 
-    private fun togglePanel() {
-        if (isPanelShowing) {
-            removePanel()
+    private fun toggleHud() {
+        if (hudView != null) {
+            removeHudCanvas()
         } else {
-            showPanel()
+            showHudCanvas()
         }
     }
 
-    private fun showPanel() {
-        if (panelView != null) {
+    private fun showHudCanvas() {
+        if (hudView != null) {
             return
         }
 
-        val panel = LinearLayout(this)
-        panel.orientation = LinearLayout.VERTICAL
-        panel.setBackgroundColor(0xEEFFFFFF.toInt())
-        panel.setPadding(dp(8), dp(8), dp(8), dp(8))
-
-        val labels = listOf("Toast A", "Toast B", "改按钮文字", "关闭面板")
-
-        for (label in labels) {
-            val b = Button(this)
-            b.text = label
-            b.setOnClickListener {
-                when (label) {
-                    "Toast A" -> Toast.makeText(this, "按钮 A", Toast.LENGTH_SHORT).show()
-                    "Toast B" -> Toast.makeText(this, "按钮 B", Toast.LENGTH_SHORT).show()
-                    "改按钮文字" -> floatView?.text = "OK"
-                    "关闭面板" -> removePanel()
-                }
-            }
-            panel.addView(b)
-        }
+        val canvas = drawcanvas(this)
+        canvas.onCloseCanvas = { removeHudCanvas() }
+        canvas.setupDemo()
 
         val p = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
 
-        p.gravity = Gravity.TOP or Gravity.END
-        p.x = margin
-        p.y = (params?.y ?: 0) + buttonSize + margin
+        p.gravity = Gravity.TOP or Gravity.START
 
-        wm.addView(panel, p)
-        panelView = panel
-        isPanelShowing = true
+        runCatching { wm.addView(canvas, p) }
+        hudView = canvas
     }
 
-    private fun removePanel() {
-        panelView?.let {
-            wm.removeView(it)
+    private fun removeHudCanvas() {
+        hudView?.let {
+            runCatching { wm.removeView(it) }
         }
-        panelView = null
-        isPanelShowing = false
+        hudView = null
     }
 
     private fun dp(v: Int): Int {
