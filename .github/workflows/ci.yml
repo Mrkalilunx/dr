@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
+      - name: Build APK
+        run: gradle assembleRelease
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/*.apk dist/dr.apk
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr
+          path: dist/dr.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dr-latest
+          name: dr latest
+          files: dist/dr.apk
+          make_latest: true
