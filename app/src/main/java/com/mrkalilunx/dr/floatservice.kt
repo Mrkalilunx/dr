@@ -7,15 +7,14 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.abs
 
@@ -23,7 +22,7 @@ class floatservice : Service() {
 
     private lateinit var wm: WindowManager
 
-    private var floatView: TextView? = null
+    private var floatView: View? = null
     private var params: WindowManager.LayoutParams? = null
     private var hudView: drawcanvas? = null
 
@@ -46,7 +45,7 @@ class floatservice : Service() {
 
         val dm = resources.displayMetrics
         screenWidth = dm.widthPixels
-        buttonSize = dp(48)
+        buttonSize = (floatball.windowSizeDp * dm.density).toInt()
         margin = dp(8)
         statusBarHeight = getStatusBarHeight()
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
@@ -120,16 +119,8 @@ class floatservice : Service() {
             return
         }
 
-        val tv = TextView(this)
-        tv.text = "dr"
-        tv.textSize = 16f
-        tv.gravity = Gravity.CENTER
-        tv.setTextColor(0xFFFFFFFF.toInt())
-
-        val bg = GradientDrawable()
-        bg.shape = GradientDrawable.OVAL
-        bg.setColor(0xFF3F51B5.toInt())
-        tv.background = bg
+        val ball = floatball(this)
+        val innerInset = dp(4)
 
         val p = WindowManager.LayoutParams(
             buttonSize,
@@ -140,10 +131,10 @@ class floatservice : Service() {
         )
 
         p.gravity = Gravity.TOP or Gravity.START
-        p.x = screenWidth - buttonSize - margin
-        p.y = statusBarHeight + margin
+        p.x = screenWidth - buttonSize - margin + innerInset
+        p.y = statusBarHeight + margin + innerInset
 
-        tv.setOnTouchListener { v, event ->
+        ball.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
@@ -179,8 +170,8 @@ class floatservice : Service() {
             }
         }
 
-        runCatching { wm.addView(tv, p) }
-        floatView = tv
+        runCatching { wm.addView(ball, p) }
+        floatView = ball
         params = p
     }
 
