@@ -24,7 +24,8 @@ class floatball @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     companion object {
-        const val windowSizeDp = 52f
+        const val windowWidthDp = 26f
+        const val windowHeightDp = 31f
 
         // 以下图案几何均以 half = min(w,h)/2 为单位 中心为原点 y 向下为正
 
@@ -54,6 +55,18 @@ class floatball @JvmOverloads constructor(
 
         // 整体图案旋转角度 逆时针 90 度 竖线在右 圆点在左 升起方向向左
         private const val ROT_DEG = -90f
+
+        // 图案在屏幕坐标下的包围盒 归一化 未乘 fitScale
+        // 右极值取竖线右沿 左极值取升起态圆点左沿 上下极值取竖线两端加端帽
+        private const val DESIGN_X_MIN = -0.45f
+        private const val DESIGN_X_MAX = 0.355f
+        private const val DESIGN_Y_MAX = 0.495f
+
+        // 包围盒外留的模糊安全边距 防止 BlurMaskFilter 外扩被窗口裁切
+        private const val EDGE_PAD = 0.06f
+
+        // 图案水平中心偏移 用于把图案摆正到窗口中心
+        private const val DESIGN_CX = (DESIGN_X_MIN + DESIGN_X_MAX) / 2f
 
         // metaball 模糊半径系数 即 smin 的 k
         private const val BLUR_SCALE = 0.055f
@@ -121,6 +134,8 @@ class floatball @JvmOverloads constructor(
     private var lastFrameNs = 0L
     private var loopRunning = false
 
+    private var fitScale = 1f
+
     private val prep = Runnable { springTarget = 1f }
 
     init {
@@ -160,9 +175,12 @@ class floatball @JvmOverloads constructor(
         offscreen = bmp
         offCanvas = Canvas(bmp)
 
-        val half = min(w, h) / 2f
+        val xSpan = DESIGN_X_MAX - DESIGN_X_MIN + 2f * EDGE_PAD
+        val ySpan = 2f * DESIGN_Y_MAX + 2f * EDGE_PAD
+        fitScale = min(w / xSpan, h / ySpan)
+
         blurPaint.maskFilter = BlurMaskFilter(
-            (half * BLUR_SCALE).coerceAtLeast(1f),
+            (fitScale * BLUR_SCALE).coerceAtLeast(1f),
             BlurMaskFilter.Blur.NORMAL
         )
         invalidate()
@@ -171,8 +189,7 @@ class floatball @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         val w = width
         val h = height
-        val half = min(w, h) / 2f
-        if (half <= 0f) return
+        if (w <= 0 || h <= 0) return
 
         val bmp = offscreen ?: return
         val oc = offCanvas ?: return
@@ -199,21 +216,25 @@ class floatball @JvmOverloads constructor(
         val dotBreath = 1f + breath * BREATH_DOT
 
         oc.save()
-        oc.translate(w / 2f, h / 2f + bob)
+        oc.translate(w / 2f - DESIGN_CX * s, h / 2f + bobPx)
         oc.rotate(ROT_DEG)
 
         // 竖线
         oc.drawRoundRect(
-            -lineHalf, lineY - halfW,
-            lineHalf, lineY + halfW,
-            halfW, halfW, blurPaint
+            -lineHalf * s,
+            (lineY - halfW) * s,
+            lineHalf * s,
+            (lineY + halfW) * s,
+            halfW * s,
+            halfW * s,
+            blurPaint
         )
 
         // 圆点 旋转后局部 y 轴即屏幕水平方向 也就是运动方向
         oc.save()
-        oc.translate(0f, dotY)
+        oc.translate(0f, dotY * s)
         oc.scale(squash, stretch)
-        oc.drawCircle(0f, 0f, dotR * dotBreath, blurPaint)
+        oc.drawCircle(0f, 0f, dotR * dotBreath * s, blurPaint)
         oc.restore()
 
         oc.restore()

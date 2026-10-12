@@ -33,6 +33,8 @@ class floatservice : Service() {
     private var hudParams: WindowManager.LayoutParams? = null
 
     private var buttonSize = 0
+    private var ballW = 0
+    private var ballH = 0
     private var margin = 0
     private var screenWidth = 0
     private var screenHeight = 0
@@ -54,7 +56,8 @@ class floatservice : Service() {
         val size = realScreenSize()
         screenWidth = size.x
         screenHeight = size.y
-        buttonSize = (floatball.windowSizeDp * dm.density).toInt()
+        ballW = (floatball.windowWidthDp * dm.density).toInt()
+        ballH = (floatball.windowHeightDp * dm.density).toInt()
         margin = dp(8)
         statusBarHeight = getStatusBarHeight()
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
@@ -151,8 +154,8 @@ class floatservice : Service() {
         val innerInset = dp(4)
 
         val p = WindowManager.LayoutParams(
-            buttonSize,
-            buttonSize,
+            ballW,
+            ballH,
             overlayType(),
             // NO_LIMITS 允许越出 app bounds,IN_SCREEN 让坐标基准变成整屏含状态栏
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -169,7 +172,7 @@ class floatservice : Service() {
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
 
-        p.x = screenWidth - buttonSize - margin + innerInset
+        p.x = screenWidth - ballW - margin + innerInset
         p.y = statusBarHeight + margin + innerInset
 
         ball.setOnTouchListener { v, event ->
@@ -193,8 +196,8 @@ class floatservice : Service() {
 
                     // rawX/rawY 是绝对屏幕坐标,直接加在起点上即可
                     // 钳到 0..屏幕减按钮 让球边缘能贴死四边但不整颗消失
-                    p.x = (startX + dx).coerceIn(0, (screenWidth - buttonSize).coerceAtLeast(0))
-                    p.y = (startY + dy).coerceIn(0, (screenHeight - buttonSize).coerceAtLeast(0))
+                    p.x = (startX + dx).coerceIn(0, (screenWidth - ballW).coerceAtLeast(0))
+                    p.y = (startY + dy).coerceIn(0, (screenHeight - ballH).coerceAtLeast(0))
                     runCatching { wm.updateViewLayout(v, p) }
                     true
                 }
@@ -276,8 +279,8 @@ class floatservice : Service() {
     private fun repositionFloatButton() {
         val ball = floatView ?: return
         val p = params ?: return
-        p.x = p.x.coerceIn(0, (screenWidth - buttonSize).coerceAtLeast(0))
-        p.y = p.y.coerceIn(0, (screenHeight - buttonSize).coerceAtLeast(0))
+        p.x = p.x.coerceIn(0, (screenWidth - ballW).coerceAtLeast(0))
+        p.y = p.y.coerceIn(0, (screenHeight - ballH).coerceAtLeast(0))
         runCatching { wm.updateViewLayout(ball, p) }
     }
 
