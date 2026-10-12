@@ -21,6 +21,7 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Toast
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class floatservice : Service() {
 
@@ -40,6 +41,8 @@ class floatservice : Service() {
     private var screenHeight = 0
     private var statusBarHeight = 0
     private var touchSlop = 0
+    private var lastOrientation = 0
+    private var repositionRetry = 0
 
     private var downX = 0f
     private var downY = 0f
@@ -305,11 +308,11 @@ class floatservice : Service() {
             return
         }
 
-        // 旋转后尺寸可能还没刷新,延迟重试
+        // 旋转后尺寸可能还没刷新,延迟重试;不依赖方向字段,避免时序漏重试
         if (newW == oldW && newH == oldH) {
-            if (repositionRetry < 3 && resources.configuration.orientation != lastOrientation) {
+            if (repositionRetry < 5) {
                 repositionRetry++
-                ball.postDelayed({ repositionFloatButton() }, 32L)
+                ball.postDelayed({ repositionFloatButton() }, 40L)
             }
             return
         }
