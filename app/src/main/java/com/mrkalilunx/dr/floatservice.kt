@@ -198,14 +198,13 @@ class floatservice : Service() {
         }
 
         val canvas = drawcanvas(this)
-        canvas.onCloseCanvas = { removeHudCanvas() }
-        canvas.setupDemo()
 
         val p = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
         )
 
