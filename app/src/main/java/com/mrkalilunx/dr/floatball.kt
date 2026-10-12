@@ -62,6 +62,9 @@ class floatball @JvmOverloads constructor(
         // 地平线线宽
         private const val LINE_W = 0.11f
 
+        // 整体图案旋转角度 逆时针 90 度 地平线变竖线 圆点落到左侧 升起方向变为向左
+        private const val ROT_DEG = -90f
+
         // 模糊半径系数 乘 half 后即 smin 里的 k 融合平滑半径 越大越黏
         private const val BLUR_SCALE = 0.055f
 
@@ -180,6 +183,7 @@ class floatball @JvmOverloads constructor(
         // 离屏上画地平线胶囊加圆点 靠 BlurMaskFilter 在 alpha 空间融合
         oc.save()
         oc.translate(w / 2f, h / 2f)
+        oc.rotate(ROT_DEG)
         oc.drawRoundRect(
             -lineHalf, lineY - halfW,
             lineHalf, lineY + halfW,
