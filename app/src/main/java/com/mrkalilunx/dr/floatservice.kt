@@ -275,10 +275,21 @@ class floatservice : Service() {
         hudParams = p
     }
 
-    // 旋转后只做边界收敛,把球留在原相对位置,不再弹回右上角
+    // 旋转后按比例保持相对位置,再做边界收敛
     private fun repositionFloatButton() {
         val ball = floatView ?: return
         val p = params ?: return
+        val size = realScreenSize()
+        val newW = size.x
+        val newH = size.y
+        if (newW > 0 && newH > 0 && screenWidth > 0 && screenHeight > 0) {
+            val rx = p.x.toFloat() / screenWidth.toFloat()
+            val ry = p.y.toFloat() / screenHeight.toFloat()
+            p.x = (rx * newW.toFloat()).toInt()
+            p.y = (ry * newH.toFloat()).toInt()
+        }
+        screenWidth = newW
+        screenHeight = newH
         p.x = p.x.coerceIn(0, (screenWidth - ballW).coerceAtLeast(0))
         p.y = p.y.coerceIn(0, (screenHeight - ballH).coerceAtLeast(0))
         runCatching { wm.updateViewLayout(ball, p) }
