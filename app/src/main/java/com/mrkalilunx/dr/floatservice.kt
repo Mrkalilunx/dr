@@ -219,8 +219,8 @@ class floatservice : Service() {
 
         val canvas = drawcanvas(this)
 
-        // MATCH_PARENT 会被窗口管理器按 app bounds 解析(扣除状态栏),
-        // 这里直接用物理屏尺寸,NO_LIMITS 保证窗口从屏幕左上角铺满整屏
+        // LAYOUT_IN_SCREEN 把窗口父 frame 从 app bounds 换成整块物理屏,原点回到 (0,0)
+        // LAYOUT_NO_LIMITS 允许窗口越界,两者组合保证窗口铺满整屏不偏移
         val bounds = currentScreenBounds()
 
         val p = WindowManager.LayoutParams(
@@ -229,6 +229,7 @@ class floatservice : Service() {
             overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
