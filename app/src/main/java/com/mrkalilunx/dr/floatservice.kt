@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
@@ -27,6 +28,7 @@ class floatservice : Service() {
     private var floatView: View? = null
     private var params: WindowManager.LayoutParams? = null
     private var hudView: drawcanvas? = null
+    private var hudParams: WindowManager.LayoutParams? = null
 
     private var buttonSize = 0
     private var margin = 0
@@ -51,6 +53,22 @@ class floatservice : Service() {
         margin = dp(8)
         statusBarHeight = getStatusBarHeight()
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+    }
+
+    // 服务实现 ComponentCallbacks2,系统在配置变化时会回调,无需在 manifest 声明
+    // 旋转后刷新缓存尺寸、重排浮球、更新 HUD 窗口宽高触发重绘
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        val dm = resources.displayMetrics
+        screenWidth = dm.widthPixels
+        statusBarHeight = getStatusBarHeight()
+
+        repositionFloatButton()
+
+        if (hudView != null) {
+            updateHudLayout()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -203,13 +221,7 @@ class floatservice : Service() {
 
         // MATCH_PARENT 会被窗口管理器按 app bounds 解析(扣除状态栏),
         // 这里直接用物理屏尺寸,NO_LIMITS 保证窗口从屏幕左上角铺满整屏
-        val bounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            wm.currentWindowMetrics.bounds
-        } else {
-            @Suppress("DEPRECATION")
-            val dm = DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
-            Rect(0, 0, dm.widthPixels, dm.heightPixels)
-        }
+        val bounds = currentScreenBounds()
 
         val p = WindowManager.LayoutParams(
             bounds.width(),
@@ -225,6 +237,37 @@ class floatservice : Service() {
 
         runCatching { wm.addView(canvas, p) }
         hudView = canvas
+        hudParams = p
+    }
+
+    // 旋转后把浮球拉回新的右上角,避免留在屏幕外或错位
+    private fun repositionFloatButton() {
+        val ball = floatView ?: return
+        val p = params ?: return
+        val innerInset = dp(4)
+        p.x = screenWidth - buttonSize - margin + innerInset
+        p.y = statusBarHeight + margin + innerInset
+        runCatching { wm.updateViewLayout(ball, p) }
+    }
+
+    // 旋转后更新 HUD 窗口宽高,View 尺寸变化会触发 drawcanvas.onSizeChanged 重建内容
+    private fun updateHudLayout() {
+        val canvas = hudView ?: return
+        val p = hudParams ?: return
+        val bounds = currentScreenBounds()
+        p.width = bounds.width()
+        p.height = bounds.height()
+        runCatching { wm.updateViewLayout(canvas, p) }
+    }
+
+    private fun currentScreenBounds(): Rect {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wm.currentWindowMetrics.bounds
+        } else {
+            @Suppress("DEPRECATION")
+            val dm = DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
+            Rect(0, 0, dm.widthPixels, dm.heightPixels)
+        }
     }
 
     private fun removeHudCanvas() {
@@ -232,6 +275,7 @@ class floatservice : Service() {
             runCatching { wm.removeView(it) }
         }
         hudView = null
+        hudParams = null
     }
 
     private fun dp(v: Int): Int {
