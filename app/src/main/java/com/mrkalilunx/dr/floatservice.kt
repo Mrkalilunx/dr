@@ -7,9 +7,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -199,9 +201,19 @@ class floatservice : Service() {
 
         val canvas = drawcanvas(this)
 
+        // MATCH_PARENT 会被窗口管理器按 app bounds 解析(扣除状态栏),
+        // 这里直接用物理屏尺寸,NO_LIMITS 保证窗口从屏幕左上角铺满整屏
+        val bounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wm.currentWindowMetrics.bounds
+        } else {
+            @Suppress("DEPRECATION")
+            val dm = DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
+            Rect(0, 0, dm.widthPixels, dm.heightPixels)
+        }
+
         val p = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            bounds.width(),
+            bounds.height(),
             overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
