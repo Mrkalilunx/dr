@@ -62,23 +62,15 @@ class drawcanvas(context: Context) : View(context) {
     private fun setupDemo(w: Int, h: Int) {
         ops.clear()
 
-        // 描边外沿正好压在屏幕边缘,避免半线宽被屏幕裁掉产生缝隙
-        val outerHalf = borderOuterPaint.strokeWidth / 2f
-        val innerHalf = borderInnerPaint.strokeWidth / 2f
+        // 状态栏和导航栏由系统窗口自己显示,层级高于 overlay,边框收进可用区内
+        // 左右两线贴物理边缘,上下两线贴系统栏内沿,四边在可用区内完整闭合
+        val topY = statusBarHeight().toFloat()
+        val bottomY = h - navigationBarHeight().toFloat()
+        val borderRect = RectF(0f, topY, w.toFloat(), bottomY)
 
-        // 框住整个物理屏幕四边,先画深色外描边再画白色内描边
-        ops.add(
-            DrawOp.Rect(
-                RectF(outerHalf, outerHalf, w - outerHalf, h - outerHalf),
-                borderOuterPaint
-            )
-        )
-        ops.add(
-            DrawOp.Rect(
-                RectF(innerHalf, innerHalf, w - innerHalf, h - innerHalf),
-                borderInnerPaint
-            )
-        )
+        // 先画深色外描边给白线兜底对比,再画白色内描边
+        ops.add(DrawOp.Rect(borderRect, borderOuterPaint))
+        ops.add(DrawOp.Rect(borderRect, borderInnerPaint))
 
         val lines = screenInfo()
         val fm = textPaint.fontMetrics
@@ -89,9 +81,9 @@ class drawcanvas(context: Context) : View(context) {
         val padH = dp(12f)
         val padV = dp(10f)
 
-        // 面板下移到状态栏下方,避免与系统时间/图标视觉重叠
+        // 面板顶对齐状态栏下沿,往内缩 8dp 避免和白线贴脸
         val panelLeft = dp(16f)
-        val panelTop = statusBarHeight().toFloat() + dp(8f)
+        val panelTop = topY + dp(8f)
         val panel = RectF(
             panelLeft,
             panelTop,
@@ -146,6 +138,11 @@ class drawcanvas(context: Context) : View(context) {
 
     private fun statusBarHeight(): Int {
         val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    private fun navigationBarHeight(): Int {
+        val id = resources.getIdentifier("navigation_bar_height", "dimen", "android")
         return if (id > 0) resources.getDimensionPixelSize(id) else 0
     }
 
