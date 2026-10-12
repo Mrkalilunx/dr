@@ -2,18 +2,25 @@ package com.mrkalilunx.dr
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
+import android.graphics.PorterDuff
 import android.util.AttributeSet
 import android.view.View
-import android.view.animation.LinearInterpolator
-import kotlin.math.cos
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import kotlin.math.min
 
-// 悬浮球 日出造型
-// 黑色圆点在地平线上方缓缓落下 贴近地平线后回升
-// 触底瞬间圆点微放大 地平线向两端延展 整体极轻呼吸收缩
+// 悬浮球 黑色圆点加地平线 背景完全透明
+// HUD 开 圆点升起 HUD 关 圆点落下 升降由外部 setRisen 驱动 视图自身不做触摸
+// metaball 融合 把地平线和圆点先画进离屏 ARGB Bitmap 绘制时加 BlurMaskFilter
+// 让两者在 alpha 空间自然叠加 再用带 alpha 阈值化 ColorMatrixColorFilter 的 Paint
+// 贴回画布 得到硬边 gooey 形状 靠近时长出脖颈 拉远自动断裂
 class floatball @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -23,25 +30,25 @@ class floatball @JvmOverloads constructor(
     companion object {
         const val windowSizeDp = 52f
 
-        // 一次完整升降的时长 毫秒
-        private const val CYCLE_MS = 4600L
+        // 升起时长 毫秒
+        private const val RISE_MS = 340L
 
-        // 以下几何均以视图半宽为 1 归一化 中心为原点 y 向下为正
+        // 落下时长 毫秒
+        private const val FALL_MS = 340L
 
-        // 底板外接半径
-        private const val BODY_R = 0.77f
-
-        // 底板圆角
-        private const val BODY_CORNER = 0.34f
+        // 以下几何均以 half = min(w,h)/2 为单位 中心为原点 y 向下为正
 
         // 圆点半径
-        private const val DOT_R = 0.21f
+        private const val DOT_R = 0.20f
 
-        // 圆点高位中心
-        private const val DOT_Y_HIGH = -0.22f
+        // 落下时圆心 y 贴住地平线
+        private const val DOT_Y_LOW = 0.10f
 
-        // 圆点低位中心 底边刚好贴近地平线
-        private const val DOT_Y_LOW = 0.06f
+        // 升起时圆心 y
+        private const val DOT_Y_HIGH = -0.24f
+
+        // 升起时圆点半径增大比例
+        private const val DOT_GROW = 0.05f
 
         // 地平线高度
         private const val LINE_Y = 0.30f
@@ -49,113 +56,145 @@ class floatball @JvmOverloads constructor(
         // 地平线静止半长
         private const val LINE_HALF = 0.40f
 
-        // 地平线延展半长
+        // 地平线升起时半长
         private const val LINE_HALF_MAX = 0.44f
 
         // 地平线线宽
-        private const val LINE_W = 0.09f
+        private const val LINE_W = 0.11f
 
-        // 圆点触底时的放大比例
-        private const val DOT_GROW = 0.06f
+        // 模糊半径系数 乘 half 后即 smin 里的 k 融合平滑半径 越大越黏
+        private const val BLUR_SCALE = 0.055f
 
-        // 整体呼吸收缩比例
-        private const val BREATH = 0.015f
+        // alpha 阈值 0..1 越大形状越瘦 脖颈越早断
+        private const val THRESHOLD = 0.42f
 
-        private const val COLOR_BODY = 0xFFF2F1ED.toInt()
-        private const val COLOR_INK = 0xFF1A1A1A.toInt()
+        // 阈值化陡峭度 越大边缘越硬
+        private const val CONTRAST = 12f
 
-        private const val TWO_PI = 6.283185307179586
+        private const val INK = Color.BLACK
     }
 
-    private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // 离屏绘制用 带 BlurMaskFilter
+    private val blurPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = COLOR_BODY
+        color = INK
     }
 
-    private val inkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = COLOR_INK
+    // 贴回画布用 带 alpha 阈值 ColorMatrix
+    private val composePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = true
     }
 
-    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = COLOR_INK
-        strokeCap = Paint.Cap.ROUND
-    }
+    // RGB 保持单位矩阵 只对 alpha 行做线性阈值化
+    // a' = CONTRAST * a - CONTRAST * THRESHOLD * 255
+    // a 在 THRESHOLD 处输出 0 稍大即饱和到 255 得到硬边 gooey
+    private val thresholdMatrix = ColorMatrix(
+        floatArrayOf(
+            1f, 0f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f, 0f,
+            0f, 0f, 1f, 0f, 0f,
+            0f, 0f, 0f, CONTRAST, -CONTRAST * THRESHOLD * 255f
+        )
+    )
 
-    private val bodyPath = Path()
-    private val bodyRect = RectF()
+    private var offscreen: Bitmap? = null
+    private var offCanvas: Canvas? = null
 
-    // 缓入缓出后的升降量 0 为高位 1 为低位
+    // 0 完全落下 1 完全升起
     private var rise = 0f
-
+    private var targetRise = 0f
     private var animator: ValueAnimator? = null
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        val half = minOf(w, h) / 2f
-        val r = BODY_R * half
-        bodyRect.set(-r, -r, r, r)
-        bodyPath.reset()
-        bodyPath.addRoundRect(bodyRect, BODY_CORNER * half, BODY_CORNER * half, Path.Direction.CW)
+    init {
+        composePaint.colorFilter = ColorMatrixColorFilter(thresholdMatrix)
     }
 
-    override fun onDraw(canvas: Canvas) {
-        val half = minOf(width, height) / 2f
-        if (half <= 0f) return
-
-        val u = rise
-        // 平方后强调集中在低位 高位几乎无变化
-        val focus = u * u
-
-        val scale = 1f - BREATH * u
-        val dotY = (DOT_Y_HIGH + (DOT_Y_LOW - DOT_Y_HIGH) * u) * half
-        val dotR = DOT_R * (1f + DOT_GROW * focus) * half
-        val lineHalf = (LINE_HALF + (LINE_HALF_MAX - LINE_HALF) * focus) * half
-        val lineY = LINE_Y * half
-
-        canvas.save()
-        canvas.translate(width / 2f, height / 2f)
-        canvas.scale(scale, scale)
-
-        canvas.drawPath(bodyPath, bodyPaint)
-
-        linePaint.strokeWidth = LINE_W * half
-        canvas.drawLine(-lineHalf, lineY, lineHalf, lineY, linePaint)
-
-        canvas.drawCircle(0f, dotY, dotR, inkPaint)
-
-        canvas.restore()
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        startAnim()
-    }
-
-    override fun onDetachedFromWindow() {
-        stopAnim()
-        super.onDetachedFromWindow()
-    }
-
-    private fun startAnim() {
-        if (animator != null) return
-        animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = CYCLE_MS
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener { a ->
-                val p = a.animatedFraction
-                // 余弦缓动 两端速度趋零 形成自然的落下与回升
-                rise = ((1.0 - cos(p * TWO_PI)) * 0.5).toFloat()
+    // HUD 开传 true 圆点升起 HUD 关传 false 圆点落下
+    // 重复同值无副作用 反向调用会从当前进度平滑折返
+    fun setRisen(risen: Boolean) {
+        val target = if (risen) 1f else 0f
+        if (targetRise == target) return
+        targetRise = target
+        val goingUp = target > rise
+        animator?.cancel()
+        animator = ValueAnimator.ofFloat(rise, target).apply {
+            duration = if (goingUp) RISE_MS else FALL_MS
+            interpolator = if (goingUp) {
+                DecelerateInterpolator(1.5f)
+            } else {
+                AccelerateInterpolator(1.5f)
+            }
+            addUpdateListener {
+                rise = it.animatedValue as Float
                 invalidate()
             }
             start()
         }
     }
 
-    private fun stopAnim() {
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+
+        if (w <= 0 || h <= 0) {
+            offscreen?.recycle()
+            offscreen = null
+            offCanvas = null
+            return
+        }
+
+        val old = offscreen
+        if (old != null && old.width == w && old.height == h) return
+        old?.recycle()
+
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        offscreen = bmp
+        offCanvas = Canvas(bmp)
+
+        val half = min(w, h) / 2f
+        val blurR = (half * BLUR_SCALE).coerceAtLeast(1f)
+        blurPaint.maskFilter = BlurMaskFilter(blurR, BlurMaskFilter.Blur.NORMAL)
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width
+        val h = height
+        val half = min(w, h) / 2f
+        if (half <= 0f) return
+
+        val bmp = offscreen ?: return
+        val oc = offCanvas ?: return
+
+        // 清空离屏 背景完全透明
+        oc.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+
+        val u = rise
+        val focus = u * u
+        val dotY = (DOT_Y_LOW + (DOT_Y_HIGH - DOT_Y_LOW) * u) * half
+        val dotR = DOT_R * (1f + DOT_GROW * focus) * half
+        val lineHalf = (LINE_HALF + (LINE_HALF_MAX - LINE_HALF) * focus) * half
+        val lineY = LINE_Y * half
+        val lineW = LINE_W * half
+        val halfW = lineW * 0.5f
+
+        // 离屏上画地平线胶囊加圆点 靠 BlurMaskFilter 在 alpha 空间融合
+        oc.save()
+        oc.translate(w / 2f, h / 2f)
+        oc.drawRoundRect(
+            -lineHalf, lineY - halfW,
+            lineHalf, lineY + halfW,
+            halfW, halfW, blurPaint
+        )
+        oc.drawCircle(0f, dotY, dotR, blurPaint)
+        oc.restore()
+
+        // 阈值化贴回 得到硬边 metaball 形状
+        canvas.drawBitmap(bmp, 0f, 0f, composePaint)
+    }
+
+    override fun onDetachedFromWindow() {
         animator?.cancel()
         animator = null
+        super.onDetachedFromWindow()
     }
 }

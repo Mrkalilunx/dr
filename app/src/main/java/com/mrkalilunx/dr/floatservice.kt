@@ -26,6 +26,7 @@ class floatservice : Service() {
     private lateinit var wm: WindowManager
 
     private var floatView: View? = null
+    private var ballView: floatball? = null
     private var params: WindowManager.LayoutParams? = null
     private var hudView: drawcanvas? = null
     private var hudParams: WindowManager.LayoutParams? = null
@@ -88,6 +89,7 @@ class floatservice : Service() {
             runCatching { wm.removeView(it) }
         }
         floatView = null
+        ballView = null
 
         super.onDestroy()
     }
@@ -140,6 +142,7 @@ class floatservice : Service() {
         }
 
         val ball = floatball(this)
+        ballView = ball
         val innerInset = dp(4)
 
         val p = WindowManager.LayoutParams(
@@ -205,10 +208,15 @@ class floatservice : Service() {
     }
 
     private fun toggleHud() {
-        if (hudView != null) {
-            removeHudCanvas()
-        } else {
+        val opening = hudView == null
+
+        // 先驱动升降动画,无论 HUD 创建或移除成败都照常播放
+        ballView?.setRisen(opening)
+
+        if (opening) {
             showHudCanvas()
+        } else {
+            removeHudCanvas()
         }
     }
 
