@@ -235,6 +235,12 @@ class floatservice : Service() {
 
         p.gravity = Gravity.TOP or Gravity.START
 
+        // API 28+ 允许窗口绘制到挖孔区域,避免 cutout 避让把顶部线裁掉
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            p.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+
         runCatching { wm.addView(canvas, p) }
         hudView = canvas
         hudParams = p
@@ -257,6 +263,10 @@ class floatservice : Service() {
         val bounds = currentScreenBounds()
         p.width = bounds.width()
         p.height = bounds.height()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            p.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
         runCatching { wm.updateViewLayout(canvas, p) }
     }
 
