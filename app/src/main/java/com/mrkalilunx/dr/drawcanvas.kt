@@ -56,10 +56,10 @@ class drawcanvas(context: Context) : View(context) {
 
         val inset = dp(16f)
 
-        // 框住整个可用区域
+        // 框住整个物理屏幕四边
         ops.add(DrawOp.Rect(RectF(inset, inset, w - inset, h - inset), borderPaint))
 
-        val lines = screenInfo(w, h)
+        val lines = screenInfo()
         val fm = textPaint.fontMetrics
         val lineHeight = fm.descent - fm.ascent + dp(6f)
         val blockHeight = (fm.descent - fm.ascent) + (lines.size - 1) * lineHeight
@@ -67,23 +67,27 @@ class drawcanvas(context: Context) : View(context) {
 
         val padH = dp(12f)
         val padV = dp(10f)
+
+        // 面板下移到状态栏下方,避免与系统时间/图标视觉重叠
+        val panelLeft = inset
+        val panelTop = statusBarHeight().toFloat() + dp(8f)
         val panel = RectF(
-            inset,
-            inset,
-            inset + maxWidth + padH * 2f,
-            inset + blockHeight + padV * 2f
+            panelLeft,
+            panelTop,
+            panelLeft + maxWidth + padH * 2f,
+            panelTop + blockHeight + padV * 2f
         )
         ops.add(DrawOp.RoundRect(panel, dp(8f), dp(8f), panelPaint))
 
-        val textX = inset + padH
-        var baseline = inset + padV - fm.ascent
+        val textX = panelLeft + padH
+        var baseline = panelTop + padV - fm.ascent
         for (line in lines) {
             ops.add(DrawOp.Text(line, textX, baseline, textPaint))
             baseline += lineHeight
         }
     }
 
-    private fun screenInfo(w: Int, h: Int): List<String> {
+    private fun screenInfo(): List<String> {
         val dm = resources.displayMetrics
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val screen = screenSize(wm)
@@ -93,7 +97,6 @@ class drawcanvas(context: Context) : View(context) {
             "密度 ${String.format(Locale.US, "%.2f", dm.density)} (${dm.densityDpi}dpi)",
             "刷新率 ${String.format(Locale.US, "%.1f", refreshRate(wm))} Hz",
             "状态栏 ${statusBarHeight()} px",
-            "可用区 $w x $h",
             "系统 Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})"
         )
     }
