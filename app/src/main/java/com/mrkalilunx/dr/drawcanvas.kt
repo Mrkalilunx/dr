@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.DisplayMetrics
 import android.util.TypedValue
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import java.util.Locale
 
@@ -112,12 +113,14 @@ class drawcanvas(context: Context) : View(context) {
         val dm = resources.displayMetrics
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val screen = screenSize(wm)
+        val area = usableArea(wm)
 
         return listOf(
             "分辨率 ${screen.first} x ${screen.second}",
             "密度 ${String.format(Locale.US, "%.2f", dm.density)} (${dm.densityDpi}dpi)",
             "刷新率 ${String.format(Locale.US, "%.1f", refreshRate(wm))} Hz",
             "状态栏 ${statusBarHeight()} px",
+            "可用区 ${area.first} x ${area.second}",
             "系统 Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})"
         )
     }
@@ -147,6 +150,29 @@ class drawcanvas(context: Context) : View(context) {
     private fun statusBarHeight(): Int {
         val id = resources.getIdentifier("status_bar_height", "dimen", "android")
         return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    private fun usableArea(wm: WindowManager): Pair<Int, Int> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30+ 用窗口边界减系统栏 insets
+            val metrics = wm.currentWindowMetrics
+            val bounds = metrics.bounds
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+            val w = bounds.width() - insets.left - insets.right
+            val h = bounds.height() - insets.top - insets.bottom
+            w to h
+        } else {
+            // 低版本从物理屏减状态栏和导航栏资源高度
+            val screen = screenSize(wm)
+            val w = screen.first
+            val h = screen.second - statusBarHeight() - navigationBarHeight()
+            w to h
+        }
+    }
+
+    private fun navigationBarHeight(): Int {
+        val resId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (resId > 0) resources.getDimensionPixelSize(resId) else 0
     }
 
     private fun dp(v: Float): Float =
