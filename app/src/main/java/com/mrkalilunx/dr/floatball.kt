@@ -27,7 +27,8 @@ class floatball @JvmOverloads constructor(
         const val windowWidthDp = 26f
         const val windowHeightDp = 31f
 
-        // 以下图案几何均以 half = min(w,h)/2 为单位 中心为原点 y 向下为正
+        // 图案在设计空间的几何 归一化 中心为原点 y 向下为正
+        // 采用非正方形窗口并按 fitScale 填满窗口 让竖线能贴近窗口右沿
 
         // 圆点半径
         private const val DOT_R = 0.20f
@@ -199,11 +200,12 @@ class floatball @JvmOverloads constructor(
         val u = pos
         val focus = u * u
 
-        val dotY = (DOT_Y_LOW + (DOT_Y_HIGH - DOT_Y_LOW) * u) * half
-        val dotR = DOT_R * (1f + DOT_GROW * focus) * half
-        val lineHalf = (LINE_HALF + (LINE_HALF_MAX - LINE_HALF) * focus) * half
-        val lineY = LINE_Y * half
-        val halfW = LINE_W * half * 0.5f
+        val s = fitScale
+        val dotY = DOT_Y_LOW + (DOT_Y_HIGH - DOT_Y_LOW) * u
+        val dotR = DOT_R * (1f + DOT_GROW * focus)
+        val lineHalf = LINE_HALF + (LINE_HALF_MAX - LINE_HALF) * focus
+        val lineY = LINE_Y
+        val halfW = LINE_W * 0.5f
 
         // 速度转成沿运动方向拉伸 垂直方向挤压
         val stretchAmt = (abs(vel) * STRETCH_GAIN).coerceAtMost(STRETCH_MAX)
@@ -212,7 +214,7 @@ class floatball @JvmOverloads constructor(
 
         // 呼吸
         val breath = sin(breathPhase * TWO_PI)
-        val bob = breath * half * BREATH_AMP
+        val bobPx = breath * BREATH_AMP * s
         val dotBreath = 1f + breath * BREATH_DOT
 
         oc.save()
