@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
@@ -34,6 +35,7 @@ class floatservice : Service() {
     private var buttonSize = 0
     private var margin = 0
     private var screenWidth = 0
+    private var screenHeight = 0
     private var statusBarHeight = 0
     private var touchSlop = 0
 
@@ -49,7 +51,9 @@ class floatservice : Service() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
         val dm = resources.displayMetrics
-        screenWidth = dm.widthPixels
+        val size = realScreenSize()
+        screenWidth = size.x
+        screenHeight = size.y
         buttonSize = (floatball.windowSizeDp * dm.density).toInt()
         margin = dp(8)
         statusBarHeight = getStatusBarHeight()
@@ -61,8 +65,9 @@ class floatservice : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
 
-        val dm = resources.displayMetrics
-        screenWidth = dm.widthPixels
+        val size = realScreenSize()
+        screenWidth = size.x
+        screenHeight = size.y
         statusBarHeight = getStatusBarHeight()
 
         repositionFloatButton()
@@ -149,11 +154,21 @@ class floatservice : Service() {
             buttonSize,
             buttonSize,
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            // NO_LIMITS 允许越出 app bounds,IN_SCREEN 让坐标基准变成整屏含状态栏
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
 
         p.gravity = Gravity.TOP or Gravity.START
+
+        // API 28+ 显式声明,否则拖进挖孔区会被顶回来
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            p.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+
         p.x = screenWidth - buttonSize - margin + innerInset
         p.y = statusBarHeight + margin + innerInset
 
@@ -176,8 +191,10 @@ class floatservice : Service() {
                         moved = true
                     }
 
-                    p.x = startX + dx
-                    p.y = startY + dy
+                    // rawX/rawY 是绝对屏幕坐标,直接加在起点上即可
+                    // 钳到 0..屏幕减按钮 让球边缘能贴死四边但不整颗消失
+                    p.x = (startX + dx).coerceIn(0, (screenWidth - buttonSize).coerceAtLeast(0))
+                    p.y = (startY + dy).coerceIn(0, (screenHeight - buttonSize).coerceAtLeast(0))
                     runCatching { wm.updateViewLayout(v, p) }
                     true
                 }
@@ -255,13 +272,12 @@ class floatservice : Service() {
         hudParams = p
     }
 
-    // 旋转后把浮球拉回新的右上角,避免留在屏幕外或错位
+    // 旋转后只做边界收敛,把球留在原相对位置,不再弹回右上角
     private fun repositionFloatButton() {
         val ball = floatView ?: return
         val p = params ?: return
-        val innerInset = dp(4)
-        p.x = screenWidth - buttonSize - margin + innerInset
-        p.y = statusBarHeight + margin + innerInset
+        p.x = p.x.coerceIn(0, (screenWidth - buttonSize).coerceAtLeast(0))
+        p.y = p.y.coerceIn(0, (screenHeight - buttonSize).coerceAtLeast(0))
         runCatching { wm.updateViewLayout(ball, p) }
     }
 
@@ -287,6 +303,19 @@ class floatservice : Service() {
             val dm = DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
             Rect(0, 0, dm.widthPixels, dm.heightPixels)
         }
+    }
+
+    // 物理整屏尺寸含状态栏,LAYOUT_IN_SCREEN 下窗口坐标以此为准
+    private fun realScreenSize(): Point {
+        val p = Point()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val b = wm.currentWindowMetrics.bounds
+            p.set(b.width(), b.height())
+        } else {
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealSize(p)
+        }
+        return p
     }
 
     private fun removeHudCanvas() {
