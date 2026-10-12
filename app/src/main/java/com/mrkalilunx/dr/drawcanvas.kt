@@ -17,10 +17,18 @@ class drawcanvas(context: Context) : View(context) {
 
     private val ops = ArrayList<DrawOp>()
 
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // 深色外描边,先画,给白线在浅色背景上兜底对比
+    private val borderOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dp(2f)
-        color = 0x99FFFFFF.toInt()
+        strokeWidth = dp(4f)
+        color = 0xAA000000.toInt()
+    }
+
+    // 白色内描边,主视觉
+    private val borderInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dp(2.5f)
+        color = 0xFFFFFFFF.toInt()
     }
 
     private val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -54,10 +62,23 @@ class drawcanvas(context: Context) : View(context) {
     private fun setupDemo(w: Int, h: Int) {
         ops.clear()
 
-        val inset = dp(16f)
+        // 描边外沿正好压在屏幕边缘,避免半线宽被屏幕裁掉产生缝隙
+        val outerHalf = borderOuterPaint.strokeWidth / 2f
+        val innerHalf = borderInnerPaint.strokeWidth / 2f
 
-        // 框住整个物理屏幕四边
-        ops.add(DrawOp.Rect(RectF(inset, inset, w - inset, h - inset), borderPaint))
+        // 框住整个物理屏幕四边,先画深色外描边再画白色内描边
+        ops.add(
+            DrawOp.Rect(
+                RectF(outerHalf, outerHalf, w - outerHalf, h - outerHalf),
+                borderOuterPaint
+            )
+        )
+        ops.add(
+            DrawOp.Rect(
+                RectF(innerHalf, innerHalf, w - innerHalf, h - innerHalf),
+                borderInnerPaint
+            )
+        )
 
         val lines = screenInfo()
         val fm = textPaint.fontMetrics
@@ -69,7 +90,7 @@ class drawcanvas(context: Context) : View(context) {
         val padV = dp(10f)
 
         // 面板下移到状态栏下方,避免与系统时间/图标视觉重叠
-        val panelLeft = inset
+        val panelLeft = dp(16f)
         val panelTop = statusBarHeight().toFloat() + dp(8f)
         val panel = RectF(
             panelLeft,
