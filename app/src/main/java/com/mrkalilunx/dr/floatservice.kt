@@ -56,6 +56,7 @@ class floatservice : Service() {
         val size = realScreenSize()
         screenWidth = size.x
         screenHeight = size.y
+        lastOrientation = resources.configuration.orientation
         ballW = (floatball.windowWidthDp * dm.density).toInt()
         ballH = (floatball.windowHeightDp * dm.density).toInt()
         margin = dp(8)
@@ -72,8 +73,9 @@ class floatservice : Service() {
         screenWidth = size.x
         screenHeight = size.y
         statusBarHeight = getStatusBarHeight()
+        lastOrientation = resources.configuration.orientation
 
-        repositionFloatButton()
+        floatView?.post { repositionFloatButton() }
 
         if (hudView != null) {
             updateHudLayout()
@@ -152,6 +154,11 @@ class floatservice : Service() {
         val ball = floatball(this)
         ballView = ball
         val innerInset = dp(4)
+
+        val size = realScreenSize()
+        screenWidth = size.x
+        screenHeight = size.y
+        lastOrientation = resources.configuration.orientation
 
         val p = WindowManager.LayoutParams(
             ballW,
@@ -279,17 +286,65 @@ class floatservice : Service() {
     private fun repositionFloatButton() {
         val ball = floatView ?: return
         val p = params ?: return
+
         val size = realScreenSize()
         val newW = size.x
         val newH = size.y
-        if (newW > 0 && newH > 0 && screenWidth > 0 && screenHeight > 0) {
-            val rx = p.x.toFloat() / screenWidth.toFloat()
-            val ry = p.y.toFloat() / screenHeight.toFloat()
-            p.x = (rx * newW.toFloat()).toInt()
-            p.y = (ry * newH.toFloat()).toInt()
+        if (newW <= 0 || newH <= 0) return
+
+        val oldW = screenWidth
+        val oldH = screenHeight
+
+        if (oldW <= 0 || oldH <= 0) {
+            screenWidth = newW
+            screenHeight = newH
+            lastOrientation = resources.configuration.orientation
+            p.x = p.x.coerceIn(0, (newW - ballW).coerceAtLeast(0))
+            p.y = p.y.coerceIn(0, (newH - ballH).coerceAtLeast(0))
+            runCatching { wm.updateViewLayout(ball, p) }
+            return
         }
+
+        // 旋转后尺寸可能还没刷新,延迟重试
+        if (newW == oldW && newH == oldH) {
+            if (repositionRetry < 3 && resources.configuration.orientation != lastOrientation) {
+                repositionRetry++
+                ball.postDelayed({ repositionFloatButton() }, 32L)
+            }
+            return
+        }
+
+        repositionRetry = 0
+        lastOrientation = resources.configuration.orientation
+
+        val left = p.x
+        val right = oldW - p.x - ballW
+        val top = p.y
+        val bottom = oldH - p.y - ballH
+
+        val anchorRight = right <= left
+        val anchorBottom = bottom <= top
+
+        val leftRatio = left.toFloat() / oldW
+        val rightRatio = right.toFloat() / oldW
+        val topRatio = top.toFloat() / oldH
+        val bottomRatio = bottom.toFloat() / oldH
+
+        p.x = if (anchorRight) {
+            newW - ballW - (rightRatio * newW).roundToInt()
+        } else {
+            (leftRatio * newW).roundToInt()
+        }
+
+        p.y = if (anchorBottom) {
+            newH - ballH - (bottomRatio * newH).roundToInt()
+        } else {
+            (topRatio * newH).roundToInt()
+        }
+
         screenWidth = newW
         screenHeight = newH
+
         p.x = p.x.coerceIn(0, (screenWidth - ballW).coerceAtLeast(0))
         p.y = p.y.coerceIn(0, (screenHeight - ballH).coerceAtLeast(0))
         runCatching { wm.updateViewLayout(ball, p) }
