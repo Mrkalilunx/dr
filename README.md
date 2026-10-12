@@ -36,17 +36,33 @@ Actions artifact 名称 dr，需登录 GitHub 后在 Actions 页面下载
 
 点击“显示悬浮窗”并授予悬浮窗权限后，屏幕右上角会出现动画悬浮球
 
-悬浮球由 floatball 实现：径向渐变球体 + 呼吸缩放 + 旋转流光 + 声呐扩散环 + 轨道粒子，三个 Animator 驱动，零对象分配
+悬浮球由 floatball 实现：径向渐变球体 + 呼吸缩放 + 旋转流光 + 声呐扩散环 + 轨道粒子，三个 Animator 驱动，onDraw 零对象分配
 
-悬浮球可拖动，点击后切换 HUD 画布（全屏透明叠加层）
+悬浮球可拖动，点击切换 HUD 画布
 
-HUD 画布由 drawcanvas 实现：纯展示层，触摸穿透，开着时不影响操作底层应用
-
-HUD 内容：四边白色边框框住整个可用区域，左上角半透明面板显示屏幕信息（分辨率、密度、刷新率、状态栏高度、可用区、系统版本）
-
-再次点击悬浮球关闭 HUD
+HUD 窗口由前台服务 floatservice 持有，再次点击悬浮球关闭 HUD
 
 停止悬浮窗可点击应用内“停止悬浮窗”按钮，或停止前台服务
+
+## HUD 画布
+
+HUD 画布由 drawcanvas 实现，纯展示层，窗口带 FLAG_NOT_TOUCHABLE 触摸穿透，开着时不影响操作底层应用
+
+HUD 窗口类型 TYPE_APPLICATION_OVERLAY，尺寸显式取物理屏宽高不用 MATCH_PARENT
+
+HUD 窗口 flags 为 NOT_FOCUSABLE | NOT_TOUCHABLE | LAYOUT_IN_SCREEN | LAYOUT_NO_LIMITS
+
+LAYOUT_IN_SCREEN 让窗口父框是整块物理屏、坐标原点回到 (0,0)，边框贴物理屏最外沿
+
+系统状态栏窗口层级永远高于应用悬浮窗，顶部线会被其窗口盖住；但状态栏背景透明，顶边线能透出，状态栏被包进框内
+
+layoutInDisplayCutoutMode=ALWAYS（API 28+）允许绘制到挖孔区域，隐藏状态栏的全屏应用里顶部线也贴到屏幕最外沿
+
+横竖屏旋转：服务实现 onConfigurationChanged，旋转后重算屏幕宽与状态栏高、重排悬浮球到右上角、更新 HUD 窗口尺寸触发重绘
+
+HUD 内容：四边白色边框（带深色外描边兜底）贴物理屏边缘，左上角半透明面板显示屏幕信息，依次为分辨率、密度、刷新率、状态栏高度、可用区、系统版本
+
+局限：普通应用无法把内容画到系统状态栏或导航栏之上，只有系统签名或 root 才行
 
 ## 构建
 
