@@ -72,11 +72,9 @@ class floatservice : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
 
-        val size = realScreenSize()
-        screenWidth = size.x
-        screenHeight = size.y
+        // 不在此更新 screenWidth/screenHeight,交给 repositionFloatButton 在重算后更新
+        // 否则 oldW 恒等于 newW,比例重算分支永远进不去,浮球停在原地
         statusBarHeight = getStatusBarHeight()
-        lastOrientation = resources.configuration.orientation
 
         floatView?.post { repositionFloatButton() }
 
@@ -309,10 +307,11 @@ class floatservice : Service() {
         }
 
         // 旋转后尺寸可能还没刷新,延迟重试;不依赖方向字段,避免时序漏重试
+        // 重试上限给足,等 realScreenSize 真正返回新尺寸再按比例重算
         if (newW == oldW && newH == oldH) {
-            if (repositionRetry < 5) {
+            if (repositionRetry < 15) {
                 repositionRetry++
-                ball.postDelayed({ repositionFloatButton() }, 40L)
+                ball.postDelayed({ repositionFloatButton() }, 60L)
             }
             return
         }
